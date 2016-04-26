@@ -88,7 +88,7 @@ std::vector<justine::sampleclient::MyShmClient::Cop> justine::sampleclient::MySh
 
   boost::system::error_code err;
 
-  size_t length = std::sprintf ( data, "<init guided %s 10 c>", m_teamname.c_str() );
+  size_t length = std::sprintf ( data, "<init guided %s 5 c>", m_teamname.c_str() );
 
   socket.send ( boost::asio::buffer ( data, length ) );
 
@@ -316,21 +316,17 @@ void justine::sampleclient::MyShmClient::start ( boost::asio::io_service& io_ser
     }
 }
 
-void justine::sampleclient::MyShmClient::start10 ( boost::asio::io_service& io_service, const char * port )
+void justine::sampleclient::MyShmClient::start10 (boost::asio::io_service& io_service, const char * port)
 {
 
-#ifdef DEBUG
-  foo();
-#endif
+  boost::asio::ip::tcp::resolver resolver (io_service);
+  boost::asio::ip::tcp::resolver::query query (boost::asio::ip::tcp::v4(), "localhost", port);
+  boost::asio::ip::tcp::resolver::iterator iterator = resolver.resolve (query);
 
-  boost::asio::ip::tcp::resolver resolver ( io_service );
-  boost::asio::ip::tcp::resolver::query query ( boost::asio::ip::tcp::v4(), "localhost", port );
-  boost::asio::ip::tcp::resolver::iterator iterator = resolver.resolve ( query );
+  boost::asio::ip::tcp::socket socket (io_service);
+  boost::asio::connect (socket, iterator);
 
-  boost::asio::ip::tcp::socket socket ( io_service );
-  boost::asio::connect ( socket, iterator );
-
-  std::vector<Cop> cops = initcops ( socket );
+  std::vector<Cop> cops = initcops (socket);
 
   unsigned int g {0u};
   unsigned int f {0u};
@@ -339,35 +335,43 @@ void justine::sampleclient::MyShmClient::start10 ( boost::asio::io_service& io_s
 
   std::vector<Gangster> gngstrs;
 
-  for ( ;; )
+  for (;;)
+  {
+    std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+    double mindst=std::numeric_limits<double>::max(); //max double
+    unsigned mingng=0; //legközelebbi gengszter
+
+    for (auto cop:cops)
     {
-      std::this_thread::sleep_for ( std::chrono::milliseconds ( 200 ) );
+      car (socket, cop, &f, &t, &s);
 
-      for ( auto cop:cops )
+      gngstrs = gangsters (socket, cop, t);
+
+      if (gngstrs.size()>0)
+      {
+        if ((mindst>dst(t, gngstrs[0].to)) && (dst(t,gngstrs[0].to) != 0))
         {
-          car ( socket, cop, &f, &t, &s );
 
-          gngstrs = gangsters ( socket, cop, t );
-
-          if ( gngstrs.size() > 0 )
-            g = gngstrs[0].to;
-          else
-            g = 0;
-
-          if ( g > 0 )
-            {
-
-              std::vector<osmium::unsigned_object_id_type> path = hasDijkstraPath ( t, g );
-
-              if ( path.size() > 1 )
-                {
-
-                  std::copy ( path.begin(), path.end(),
-                              std::ostream_iterator<osmium::unsigned_object_id_type> ( std::cout, " -> " ) );
-
-                  route ( socket, cop, path );
-                }
-            }
+        mindst=dst(t, gngstrs[0].to);
+        mingng=gngstrs[0].to;
         }
+      }
+      else mingng=0;
+
+      if (mingng>0)
+      {
+        std::vector<osmium::unsigned_object_id_type> path=hasDijkstraPath (t, mingng);
+
+        if (path.size() > 1)
+        {
+          std::copy (path.begin(), path.end(),
+                  std::ostream_iterator<osmium::unsigned_object_id_type>(std::cout, " -> ")) ;
+
+        //útvonal elküldése
+          route (socket, cop, path);
+        }
+      }
     }
+  }
 }
